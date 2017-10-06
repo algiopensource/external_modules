@@ -15,14 +15,22 @@ class ProductTemplate(models.Model):
             'str_table': {}
         }
         template = self.browse(template_id)
-
         num_attrs = len(template.attribute_line_ids)
         if not template or not (num_attrs > 1):
             return res
         line_x = template.attribute_line_ids[0]
         line_y = False if num_attrs == 1 else template.attribute_line_ids[1]
 
+        ctx = self._context.copy()
+        ctx.update(pricelist=pricelist_id, partner=partner_id)
         t_product = self.env['product.product']
+        stock_field = t_product._get_stock_field()
+        fields = ['id', stock_field, 'price', 'taxes_id']
+        read = template.with_context(ctx).product_variant_ids.read(fields)
+        variant_dic = {}
+        for dic in read:
+            variant_dic[dic['id']] = dic
+
         for value_x in line_x.value_ids:
             x_attr = {
                 'id': value_x.id,
@@ -42,17 +50,43 @@ class ProductTemplate(models.Model):
                     values += value_y
                 product = template.product_variant_ids.filtered(
                     lambda x: not(values - x.attribute_value_ids))[:1]
-
-                onchange_vals = t_product._get_onchange_vals(product,
-                                                             partner_id,
-                                                             pricelist_id)
+                if product:
+                    var_info = variant_dic[product.id]
+                    tax_ids = product._ts_compute_taxes(product,
+                                                        var_info['taxes_id'],
+                                                        partner_id)
                 cell_dic = {
                     'id': product and product.id or 0,
-                    'stock': t_product._get_product_stock(product),
-                    'price': onchange_vals['price'],
+                    'stock': product and var_info[stock_field] or 0.0,
+                    'price': product and var_info['price'] or 0.0,
                     'discount': 0.0,
                     'qty': 0.0,
-                    'tax_ids': onchange_vals['tax_ids'],
+                    'tax_ids': product and tax_ids or [],
+                    'enable': True if product else False
                 }
                 res['str_table'][value_x.id][value_y.id] = cell_dic
+        return res
+
+
+class ProductProduct(models.Model):
+    _inherit = 'product.product'
+
+    @api.multi
+    def write(self, vals):
+        """
+        Set template active or archived if all of his variats are of the same
+        state
+        """
+        res = super(ProductProduct, self).write(vals)
+        if 'active' in vals:
+            active = vals['active']
+            for product in self:
+                tmpl = product.product_tmpl_id
+                domain = [('active', '=', not active),
+                          ('product_tmpl_id', '=', tmpl.id)]
+                if not self.search(domain):
+                    #  write query to not launch infinite bucle
+                    self._cr.execute("""
+                        update product_template set active = %s where id = %s
+                        """ % (active, tmpl.id))
         return res

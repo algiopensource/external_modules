@@ -2,7 +2,7 @@ odoo.define('telesale_manage_variants.models2', function (require) {
 "use strict";
 var TsModels = require('telesale.models');
 var OrderSuper = TsModels.Order
-// var Backbone = window.Backbone;
+var Model = require('web.DataModel');
 
 var TsModelSuper = TsModels.TsModel
 TsModels.TsModel = TsModels.TsModel.extend({
@@ -53,6 +53,7 @@ TsModels.TsModel = TsModels.TsModel.extend({
                 pvp: 0.0,
                 discount: 0.0,
                 taxes_ids:[],
+                standard_price: 0.0
             }
         }
         else{
@@ -100,11 +101,8 @@ TsModels.TsModel = TsModels.TsModel.extend({
 
                     // PRODUCTS
                     var product_fields = self._get_product_fields();
-                    return self.fetch(
-                        'product.product',
-                        product_fields,
-                        [['sale_ok', '=', true]]
-                    );
+                    var model = new Model('product.product');
+                    return model.call("fetch_product_data",[product_fields, [['sale_ok', '=', true]]]);
                 }).then(function(products){
                     // TODO OPTIMIZAR
                     self.db.add_products(products);
@@ -122,14 +120,17 @@ TsModels.TsModel = TsModels.TsModel.extend({
 
                     // PARTNERS
                     var partner_fields = self._get_partner_fields();
-                    return self.fetch('res.partner', partner_fields, [['customer', '=', true]])
+                    return self.fetch('res.partner', partner_fields, ['|', ['customer', '=', true], ['type', '=', 'delivery']])
                 }).then(function(customers){
                     for (var key in customers){
-                        var customer_name = self.getComplexName(customers[key]);
+                        var customer = customers[key];
+                        var customer_name = self.getComplexName(customer);
                         self.get('customer_names').push(customer_name);
+                        if (customer.company_type == 'company'){
+                            self.get('company_customer_names').push(customer_name);
+                        }
                         self.get('customer_codes').push(customers[key].ref);
                     }
-                    console.log(customers);
                     self.db.add_partners(customers);
 
                     // TAXES
@@ -156,11 +157,24 @@ TsModels.TsModel = TsModels.TsModel.extend({
                         self.get('pricelist_names').push(pricelist_name);
                     }
                     self.db.add_pricelist(pricelists);
-
+                    return self.fetch('res.country.state', ['name']);
+                }).then(function(states) {
+                    for (var key in states){
+                        var state_name = states[key].name;
+                        self.get('state_names').push(state_name);
+                    }
+                    self.db.add_states(states);
+                    return self.fetch('res.country', ['name']);
+                }).then(function(countries) {
+                    for (var key in countries){
+                        var country_name = countries[key].name;
+                        self.get('country_names').push(country_name);
+                    }
+                    self.db.add_countries(countries);
                     // ADDED BECAUSE DIFICULT INHERIT
                     var template_fields = ['name', 'display_name', 'product_variant_ids', 'product_variant_count']
                     var template_domain = [['sale_ok','=',true]]
-                    return self.fetch('product.template', template_fields, template_domain)
+                    return self.fetch('product.template', template_fields, template_domain)           
                 }).then(function(templates){
                     self.db.add_templates(templates);
 
@@ -179,7 +193,7 @@ TsModels.TsModel = TsModels.TsModel.extend({
             var line = order_lines[key];
 
             var prod_obj = this.db.get_product_by_id(line.product_id[0]);
-            var template_id = prod_obj.product_tmpl_id[0];
+            var template_id = prod_obj.product_tmpl_id;
             var template_obj = this.db.template_by_id[template_id];
 
             var to_add = {

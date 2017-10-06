@@ -1,12 +1,45 @@
 # -*- coding: utf-8 -*-
 # © 2016 Comunitea - Javier Colmenero <javier@comunitea.com>
 # License AGPL-3 - See http://www.gnu.org/licenses/agpl-3.0.html
-from odoo import models, api, _
+from odoo import models, api, _, fields
 from openerp.exceptions import except_orm
+
+
+class ProductTemplate(models.Model):
+    _inherit = 'product.template'
+
+    @api.multi
+    @api.depends('name', 'default_code')
+    def _get_display_name(self):
+        for template in self:
+            template.display_name = template.name_get() and \
+                template.name_get()[0] and template.name_get()[0][1] or ''
+
+    display_name = fields.Char(store=True, compute='_get_display_name')
+    uom_id = fields.Many2one(index=True, auto_join=True)
 
 
 class ProductProduct(models.Model):
     _inherit = 'product.product'
+
+    @api.multi
+    @api.depends('product_tmpl_id.name', 'default_code')
+    def _get_display_name(self):
+        for product in self:
+            product.display_name = product.name_get() and \
+                product.name_get()[0] and product.name_get()[0][1] or ''
+
+    display_name = fields.Char(store=True, compute='_get_display_name')
+    product_tmpl_id = fields.Many2one(index=True, auto_join=True)
+
+    @api.model
+    def fetch_product_data(self, field_list, domain):
+        """
+        Get the products as fast as posible, with only id in many to one
+        """
+        products = self.search(domain)
+        res = products.read(field_list, load='_classic_write')
+        return res
 
     @api.model
     def get_product_info(self, product_id, partner_id):
@@ -63,34 +96,56 @@ class ProductProduct(models.Model):
         return res
 
     @api.model
-    def _get_product_values2(self, product, partner_id, pricelist_id):
-        onchange_vals = self._get_onchange_vals(product, partner_id,
-                                                pricelist_id)
-
-        vals = {
-            'id': product.id,
-            'display_name': product.display_name,
-            'default_code': product.default_code,
-            'stock': self._get_product_stock(product),
-            'price': onchange_vals['price'],
-            'discount': 0.0,
-            'qty': 0.0,
-            'tax_ids': onchange_vals['tax_ids'],
-        }
-        return vals
+    def _get_stock_field(self):
+        return 'qty_available'
 
     @api.model
-    def ts_search_products(self, product_name, partner_id, pricelist_id):
-        limit = 100000
-        res = []
-        domain = [('name', 'ilike', product_name)]
-        if len(product_name) < 2:
-            limit = 100
-        for product in self.search(domain, limit=limit):
-            values = self._get_product_values2(product, partner_id,
-                                               pricelist_id)
-            res.append(values)
+    def _ts_compute_taxes(self, product_id, tax_ids, partner_id):
+        res = tax_ids
+        if partner_id and tax_ids:
+            partner = self.env['res.partner'].browse(partner_id)
+            product = self.env['product.product'].browse(product_id)
+            fpos = partner.property_account_position_id
+            if fpos:
+                taxes = self.env['account.tax'].browse(tax_ids)
+                res = fpos.map_tax(taxes, product, partner).ids
         return res
+
+    @api.model
+    def ts_search_products(self, product_name, partner_id, pricelist_id,
+                           offset=0):
+        res = []
+        domain = [('display_name', 'ilike', product_name)]
+        stock_field = self._get_stock_field()
+        fields = ['id', 'display_name', 'default_code', stock_field, 'price',
+                  'taxes_id']
+        ctx = self._context.copy()
+        ctx.update(pricelist=pricelist_id, partner=partner_id)
+        read = self.with_context(ctx).search_read(domain, fields, limit=100,
+                                                  offset=offset)
+        for dic in read:
+            tax_ids = self._ts_compute_taxes(dic['id'], dic.get('taxes_id', []),
+                                          partner_id)
+            formated = {
+                'id': dic['id'],
+                'display_name': dic.get('display_name', 0.0),
+                'default_code': dic.get('default_code', 0.0),
+                'stock': dic.get(stock_field, 0.0),
+                'price': dic.get('price', 0.0),
+                'discount': 0.0,
+                'qty': 0.0,
+                'tax_ids': tax_ids,
+            }
+            res.append(formated)
+
+        init = offset + 1
+        end = init + 99
+        result_str = "%s - %s / %s" % (init, end, len(self.search(domain)))
+        result = {
+            'result_str': result_str,
+            'products': res
+        }
+        return result
 
     @api.model
     def _get_onchange_vals(self, product, partner_id, pricelist_id):

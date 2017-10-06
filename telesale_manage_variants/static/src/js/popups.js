@@ -36,6 +36,7 @@ var GridWidget = TsBaseWidget.extend({
         this.column_attrs = [];
         this.row_attrs = [];
         this.str_table = {};
+        this.aux_field = null; // used in callback funcion
 
     },
 
@@ -59,9 +60,19 @@ var GridWidget = TsBaseWidget.extend({
             'qty': qty,
             'price': price,
             'discount': discount,
-            'tax_ids': cell_obj.tax_ids
+            'tax_ids': cell_obj.tax_ids,
+            'enable': cell_obj.enable
         }
         return vals
+    },
+
+    prototipe_delete_variant: function(line_cid){
+        var line_model = this.get_line_model_by_cid(line_cid)
+        if (line_model){
+            var current_order = this.ts_model.get('selectedOrder')
+            current_order.selectLine(line_model);
+            current_order.removeLine();
+        }
     },
 
     // For each cell add or update a line variant
@@ -69,11 +80,15 @@ var GridWidget = TsBaseWidget.extend({
         var self=this;
         this.$('.grid-cell').each(function(i, cell){
             var line_vals = self.get_cell_vals(cell);
-            if (!line_vals.qty){
-                return  // Continue to next iteration
-            }
             var variant_id = cell.getAttribute('variant-id');
             var line_cid = cell.getAttribute('line-cid');
+            if (!line_vals.qty){
+                // An existing line is setted to 0, delete it
+                if (line_cid != ""){
+                    self.prototipe_delete_variant(line_cid);
+                }
+                return  // Continue to next iteration
+            }
             
             if (line_cid == ""){
                 self.prototipe_add(parseInt(variant_id), line_vals);
@@ -202,6 +217,24 @@ var GridWidget = TsBaseWidget.extend({
         }
     },
 
+    // Load Grid From server
+    call_product_uom_change: function(input_field){
+        self=this;
+        self.aux_field = input_field
+        var model = new Model("sale.order.line")
+        var current_order = this.ts_model.get('selectedOrder');
+        var partner_id = this.ts_model.db.partner_name_id[current_order.get('partner')];
+        var pricelist_id = this.ts_model.db.pricelist_name_id[current_order.get('pricelist')];
+        var qty = parseFloat($(input_field).val());
+        var product_id = parseInt($(input_field).parent().parent().parent()[0].getAttribute('variant-id'))
+        return model.call("ts_product_uom_change", [product_id, partner_id, pricelist_id, qty])
+        .then(function(result){
+            var input_field = self.aux_field
+            $(input_field).parent().parent().next().children()[1].children[0].value = result.price_unit.toFixed(2)
+        });
+        return
+    },
+
     bind_onchange_events: function(){
         this.$('.add-qty').unbind();
         this.$('.add-price').unbind();
@@ -210,6 +243,7 @@ var GridWidget = TsBaseWidget.extend({
         var self=this;
         this.$('.add-qty').bind('change', function(event){
              self.check_float(this);
+             self.call_product_uom_change(this);
         });
         this.$('.add-price').bind('change', function(event){
              self.check_float(this);

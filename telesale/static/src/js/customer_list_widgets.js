@@ -135,25 +135,17 @@ var CustomerListWidget = TsBaseWidget.extend({
         this.$('.searchbox .search-clear').click(function(){
             self.clear_search();
         });
-
-
     },
     save_changes: function(){
         var self = this;
+        if (this.new_client.company_type != 'company'){
+            alert(_t("You can set it as order's customer, because is not a company type"));
+            return;
+        }
         var order = this.ts_model.get_order();
         if( this.has_client_changed() ){
-            // if ( this.new_client ) {
-            //     order.fiscal_position = _.find(this.pos.fiscal_positions, function (fp) {
-            //         return fp.id === self.new_client.property_account_position_id[0];
-            //     });
-            // } else {
-            //     order.fiscal_position = undefined;
-            // }
-
-            // order.set_client(this.new_client);
-            // $('#partner').blur();
-            // self.ts_widget.new_order_screen.data_order_widget.refresh();
-            $('#partner').val(this.new_client.name + ' | ' + this.new_client.ref);
+            var cus_name = self.ts_model.getComplexName(this.new_client);
+            $('#partner').val(cus_name);
             $('button#button_no').click();
         }
     },
@@ -161,18 +153,8 @@ var CustomerListWidget = TsBaseWidget.extend({
         var self = this;
         var order = this.ts_model.get_order();
         if( this.has_client_changed() ){
-            // if ( this.new_client ) {
-            //     order.fiscal_position = _.find(this.pos.fiscal_positions, function (fp) {
-            //         return fp.id === self.new_client.property_account_position_id[0];
-            //     });
-            // } else {
-            //     order.fiscal_position = undefined;
-            // }
-
-            // order.set_client(this.new_client);
-            // $('#partner').blur();
-            // self.ts_widget.new_order_screen.data_order_widget.refresh();
-            $('#shipp_addr').val(this.new_client.name + ' | ' + this.new_client.ref);
+            var cus_name = self.ts_model.getComplexName(this.new_client);
+            $('#shipp_addr').val(cus_name);
             $('button#button_no').click();
             $('#shipp_addr').focus();
         }
@@ -301,6 +283,78 @@ var CustomerListWidget = TsBaseWidget.extend({
             this.editing_client = true;
             contents.empty();
             contents.append($(QWeb.render('CustomerDetailsEdit',{widget:this,partner:partner})));
+            // Autocomplete states from array of names
+            var state_names = self.ts_model.get('state_names');
+            contents.find('#state').autocomplete({
+                source: function(request, response) {
+                    var results = $.ui.autocomplete.filter(state_names, request.term);
+                    response(results.slice(0, 20));
+                }
+            });
+            contents.find('#state').keydown(function(e){
+                if( e.keyCode != $.ui.keyCode.ENTER ) return; 
+
+                e.keyCode = $.ui.keyCode.DOWN;
+                $(this).trigger(e);
+
+                self.$('#country').focus()
+        
+                return false;
+            });
+            // Pricelist autocomplete
+            var pricelist_names = self.ts_model.get('pricelist_names');
+            contents.find('#pricelist').autocomplete({
+                source: function(request, response) {
+                    var results = $.ui.autocomplete.filter(pricelist_names, request.term);
+                    response(results.slice(0, 20));
+                }
+            });
+            contents.find('#pricelist').keydown(function(e){
+                if( e.keyCode != $.ui.keyCode.ENTER ) return; 
+
+                e.keyCode = $.ui.keyCode.DOWN;
+                $(this).trigger(e);
+
+                self.$('#country').focus()
+        
+                return false;
+            });
+            // Countries autocomplete
+            var country_names = self.ts_model.get('country_names');
+            contents.find('#country').autocomplete({
+                source: function(request, response) {
+                    var results = $.ui.autocomplete.filter(country_names, request.term);
+                    response(results.slice(0, 20));
+                }
+            });
+            contents.find('#country').keydown(function(e){
+                if( e.keyCode != $.ui.keyCode.ENTER ) return; 
+
+                e.keyCode = $.ui.keyCode.DOWN;
+                $(this).trigger(e);
+
+                self.$('#phone').focus()
+        
+                return false;
+            });
+            var partner_names = self.ts_model.get('customer_names');
+            contents.find('#parent').autocomplete({
+                source: function(request, response) {
+                    var results = $.ui.autocomplete.filter(partner_names, request.term);
+                    response(results.slice(0, 20));
+                }
+            });
+            contents.find('#parent').keydown(function(e){
+                if( e.keyCode != $.ui.keyCode.ENTER ) return; 
+
+                e.keyCode = $.ui.keyCode.DOWN;
+                $(this).trigger(e);
+
+                e.keyCode = $.ui.keyCode.TAB;
+                $(this).trigger(e);
+        
+                return false;
+            });
             this.toggle_save_button();
 
             // Browsers attempt to scroll invisible input elements
@@ -371,6 +425,32 @@ var CustomerListWidget = TsBaseWidget.extend({
         this.$('.client-details-contents .detail').each(function(idx,el){
             fields[el.name] = el.value || false;
         });
+        var company_type = this.$('.company_type').val();
+        var is_company = company_type == 'company' ? true : false
+        fields['is_company'] = is_company
+        if (!is_company){
+            fields['type'] = 'delivery'
+        }
+
+        fields['property_product_pricelist'] = false
+        fields['state_id'] = false
+        fields['country_id'] = false
+        var pricelist_id = self.ts_model.db.pricelist_name_id[this.$('#pricelist').val()];
+        if (pricelist_id){
+            fields['property_product_pricelist'] = pricelist_id
+        }
+        var state_id = self.ts_model.db.state_name_id[this.$('#state').val()];
+        if (state_id){
+            fields['state_id'] = state_id
+        }
+        var country_id = self.ts_model.db.country_name_id[this.$('#country').val()];
+        if (country_id){
+            fields['country_id'] = country_id
+        }
+        var parent_id = self.ts_model.db.partner_name_id[this.$('#parent').val()];
+        if (parent_id){
+            fields['parent_id'] = parent_id;
+        }
 
         if (!fields.name) {
             // this.gui.show_popup('error',_t('A Customer Name Is Required'));
@@ -384,7 +464,6 @@ var CustomerListWidget = TsBaseWidget.extend({
 
         fields.id           = partner.id || false;
         // fields.country_id   = fields.country_id || false;
-
         new Model('res.partner').call('update_partner_from_ui',[fields]).then(function(partner_id){
             self.saved_client_details(partner_id);
         },function(err,event){
@@ -393,7 +472,7 @@ var CustomerListWidget = TsBaseWidget.extend({
             //     'title': _t('Error: Could not Save Changes'),
             //     'body': _t('Your Internet connection is probably down.'),
             // });
-            alert(_('Error saving partner to the server'))
+            alert(_t('Error saving partner to the server'))
         });
     },
     
@@ -406,7 +485,11 @@ var CustomerListWidget = TsBaseWidget.extend({
                 self.new_client = partner;
                 self.toggle_save_button();
                 self.display_customer_details('show',partner);
-            } else {
+                var customer_name = self.ts_model.getComplexName(partner);
+                self.ts_model.get('customer_names').push(customer_name);
+                self.ts_model.get('customer_codes').push(partner.ref);
+            }
+            else {
                 // should never happen, because create_from_ui must return the id of the partner it
                 // has created, and reload_partner() must have loaded the newly created partner. 
                 self.display_customer_details('hide');

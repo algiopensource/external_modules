@@ -19,12 +19,15 @@
 #
 ##############################################################################
 
-from openerp import models, fields
+from odoo import models, fields
 
 
 class AcountBankingMandates(models.Model):
 
     _inherit = "account.banking.mandate"
+    _order = "by_default desc, partner_bank_id desc"
 
-    active = fields.Boolean("Active", related="partner_bank_id.active",
-                            readonly=True)
+    active = fields.\
+        Boolean("Active", related="partner_bank_id.active", readonly=True,
+                help="This field depends on bank account field value")
+    by_default = fields.Boolean("By default")

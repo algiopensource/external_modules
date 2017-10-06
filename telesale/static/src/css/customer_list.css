@@ -30,7 +30,7 @@
 .telesale .customer-list-content .button {
     position: relative;
     padding: 3px 13px;
-    font-size: 2vh;
+    font-size: 1.4vh;
     background: rgb(230, 230, 230);
     margin: 12px;
     border-radius: 3px;
@@ -62,6 +62,7 @@
     position: relative;
     height: 100%;
     overflow: auto;
+    padding-left: 3px;
 }
 .telesale .customer-list-content .search-clear {
     position: absolute;
@@ -96,7 +97,7 @@
     width: 15%;
 }
 .telesale .customer-list-content .client-list th.cl-street{
-    width: 18%;
+    width: 20%;
 }
 .telesale .customer-list-content .client-list th.cl-zip{
     width: 5%;
@@ -108,16 +109,25 @@
     width: 10%;
 }
 .telesale .customer-list-content .client-list th.cl-phone{
-    width: 10%;
+    width: 7%;
 }
 .telesale .customer-list-content .client-list th.cl-email{
-/*    width: 10%;*/
+    width: 12%;
+}
+.telesale .customer-list-content .client-list th.cl-type{
+    width: 5%;
 }
 
 
 .telesale .customer-list-content .client-list tr{
     transition: all 150ms linear;
     background: rgb(230,230,230);
+}
+.telesale .customer-list-content .client-list td{
+/*     max-width: 100px;*/
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
 }
 .telesale .customer-list-content .client-list thead > tr,
 .telesale .customer-list-content .client-list tr:nth-child(even) {
@@ -199,8 +209,12 @@
     position: relative;
     font-size: 16px;
 }
+.telesale .customer-list-content .client-details-box-header{
+     margin-bottom: 20px;
+     font-size: 16px;
+}
 .telesale .customer-list-content .client-details-left{
-    width: 45%;
+    width: 43%;
     float: left;
 }
 .telesale .customer-list-content .client-details-right{
@@ -211,7 +225,7 @@
     line-height: 24px;
 }
 .telesale .customer-list-content .client-detail > .label{
-    font-weight: bold;
+    font-weight: normal;
     display: inline-block;
     text-align: right;
     margin-right: 8px;

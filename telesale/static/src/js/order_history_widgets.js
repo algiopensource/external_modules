@@ -16,12 +16,29 @@ var HistorylineWidget = TsBaseWidget.extend({
         this.open_order = undefined;
         this.order_fetch = undefined;
     },
+    exists_opened_order: function(parent, options){
+        var self = this;
+        var res = false;
+        this.ts_model.get('orders').forEach(function(order){
+            if (order.get('erp_id') == self.order.id){
+                res = order;
+            }
+        });
+        return res;
+    },
     click_handler: function() {
         var self=this;
+        var opened_order = this.exists_opened_order()
+        if ( opened_order ){
+            self.ts_model.set('selectedOrder', opened_order)
+            $('button#button_no').click();
+        }
+        else {
         $.when(self.ts_widget.new_order_screen.order_widget.load_order_from_server(self.order.id, false))
             .done(function(){
                 $('button#button_no').click();
             });
+        }
     },
     click_handler2: function() {
         var self=this;
@@ -61,6 +78,16 @@ var OrderHistoryWidget = TsBaseWidget.extend({
                 var results = $.ui.autocomplete.filter(array_names, request.term);
                 response(results.slice(0, 20));
             }
+        });
+        this.$('#input-customer').keydown(function(e){
+            if( e.keyCode != $.ui.keyCode.ENTER ) return; 
+
+            e.keyCode = $.ui.keyCode.DOWN;
+            $(this).trigger(e);
+
+            self.$('#input-date_start').focus()
+    
+            return false;
         });
         this.$('#search-customer').click(function (){ self.searchCustomerOrders() });
         this.$('#search-customer-week').click(function (){ self.searchCustomerOrders('week') });

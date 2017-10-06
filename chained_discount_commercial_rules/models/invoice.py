@@ -11,18 +11,31 @@ class AccountInvoiceLine(models.Model):
     @api.one
     @api.depends('chained_discount')
     def _compute_discount(self):
-        splited_discount = self.chained_discount.split('+')
-        disc = 0.00
-        for val in splited_discount:
-            disc += float(val)
-        self.discount = disc
+        if self.chained_discount:
+            splited_discount = self.chained_discount.split('+')
+            disc = 0.00
+            cum_disc = 1
+            for val in splited_discount:
+                cum_disc = cum_disc * (1 - float(val)/100)
+                #disc += float(val)
+            self.discount = (1- cum_disc) * 100
+        else:
+            self.discount = 0
 
     discount = fields.Float(string='Discount (%)',
                             digits=dp.get_precision('Discount'),
                             default=0.0,
                             compute='_compute_discount',
-                            store=True)
+                            store=True,
+                            readonly=False,
+                            inverse='_inverse_discount',
+                            )
     chained_discount = fields.Char('Chained Discount', default='0.00')
+
+    @api.multi
+    def _inverse_discount(self):
+        for invoice_line in self:
+            invoice_line.chained_discount= invoice_line.discount
 
     @api.model
     def validate_chained_discount(self, discount_str):

@@ -149,7 +149,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="col-xs-4 fullheight">
+                <div id="inherit_me" class="col-xs-4 fullheight">
                   <div class="row semiheight">
                     <div class="col-xs-12 fullheight">
                       <div class="fullheight centerinside fullwidth">
@@ -162,10 +162,10 @@
                   </div>
                 </div>
 
-                <div class="col-xs-4 fullheight">
+                <div class="col-xs-3 fullheight">
                       <div class="row semiheight">
                           <div class="centerthis">
-                            <label for="coment">Notes:</label>
+                            <label for="coment">Internal Notes:</label>
                             <textarea onclick="this.select()" class="semiheight notes mandatory" rows="2" cols="91" id='coment' name="coment" tabIndex="3"><t t-esc="widget.order_model.get('coment')"/></textarea>
                           </div>
                       </div>
@@ -227,7 +227,7 @@
                     <div class="row semiheight">
                         <div class="centerthis">
                           <label for="observations">Observations:</label>
-                          <textarea onclick="this.select()" class="semiheight notes mandatory" rows="2" cols="82" id='observations' name="observations" tabIndex="8"><t t-esc="widget.order_model.get('observations')" t-if="widget.order_model.get('observations')"/></textarea>
+                          <textarea onclick="this.select()" class="semiheight notes mandatory" rows="2" cols="91" id='observations' name="observations" tabIndex="8"><t t-esc="widget.order_model.get('observations')" t-if="widget.order_model.get('observations')"/></textarea>
                         </div>
                     </div>
               </div>
@@ -497,6 +497,13 @@
                   <div class="fullheight centerinside fullwidth">
                        <div class="centerthis">
                   <button class="confirm-button fullwidth" tabIndex="21">CONFIRM</button>
+                       </div>
+                  </div>
+              </div>
+              <div class="order-button">
+                  <div class="fullheight centerinside fullwidth">
+                       <div class="centerthis">
+                  <button class="print-button fullwidth" tabIndex="21">PRINT</button>
                        </div>
                   </div>
               </div>

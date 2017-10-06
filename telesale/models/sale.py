@@ -4,6 +4,7 @@
 from odoo import models, fields, api
 import time
 from datetime import date, timedelta
+# import odoo.addons.decimal_precision as dp
 
 
 class SaleOrder(models.Model):
@@ -17,11 +18,51 @@ class SaleOrder(models.Model):
     observations = fields.Text('Observations')
 
     @api.model
-    def create_order_from_ui(self, orders):
+    def get_head_order_vals(self, order):
         t_partner = self.env['res.partner']
-        t_order = self.env['sale.order']
         t_irvalue = self.env['ir.values']
+        partner_obj = t_partner.browse(order['partner_id'])
+        warehouse_id = False
+        domain = [('name', '=', 'warehouse_id'),
+                  ('model', '=', 'sale.order')]
+        default_value = t_irvalue.search(domain, limit=1)
+        if default_value:
+            warehouse_id = int(default_value.value_unpickle)
+        else:
+            warehouse_id = self._default_warehouse_id() and \
+                self._default_warehouse_id()[0].id or 1
+        # TODO, BUSCAR VALORES POR DEFECTO WAREHOUSE ID SINO PONER EL DE LA
+        # COMPAÑÍA
+        pricelist_id = partner_obj.property_product_pricelist.id
+        if order.get('pricelist_id', False):
+            pricelist_id = order['pricelist_id']
 
+        values = self.ts_onchange_partner_id(partner_obj.id)
+        res = {
+            # 'name': '/',
+            'partner_id': partner_obj.id,
+            'pricelist_id': pricelist_id,
+            'partner_invoice_id': partner_obj.id,
+            'partner_shipping_id': order.get('partner_shipping_id',
+                                             partner_obj.id),
+            'chanel': 'telesale',
+            # 'order_policy': 'picking',
+            'date_order': time.strftime("%Y-%m-%d %H:%M:%S"),
+            'requested_date': order['requested_date'] + " 19:00:00" or
+            False,
+            'note': order['note'],
+            'observations': order['observations'],
+            'warehouse_id': warehouse_id,
+            'client_order_ref': order.get('client_order_ref', False),
+            'fiscal_position_id': values.get('fiscal_position_id', False),
+            'payment_term_id': values.get('payment_term_id', False),
+            'payment_mode_id': values.get('payment_mode_id', False)
+        }
+        return res
+
+    @api.model
+    def create_order_from_ui(self, orders):
+        t_order = self.env['sale.order']
         order_ids = []
         for rec in orders:
             order = rec['data']
@@ -31,38 +72,8 @@ class SaleOrder(models.Model):
             #     self.cancel_sale_to_draft(cr, uid, order['erp_id'], context)
             #     order['erp_state'] = 'draft'
 
-            partner_obj = t_partner.browse(order['partner_id'])
-            warehouse_id = False
-            domain = [('name', '=', 'warehouse_id'),
-                      ('model', '=', 'sale.order')]
-            default_value = t_irvalue.search(domain, limit=1)
-            if default_value:
-                warehouse_id = int(default_value.value_unpickle)
-            else:
-                warehouse_id = self._default_warehouse_id() and \
-                    self._default_warehouse_id()[0].id or 1
-            # TODO, BUSCAR VALORES POR DEFECTO WAREHOUSE ID SINO PONER EL DE LA
-            # COMPAÑÍA
-            pricelist_id = partner_obj.property_product_pricelist.id
-            if order.get('pricelist_id', False):
-                pricelist_id = order['pricelist_id']
-            vals = {
-                # 'name': '/',
-                'partner_id': partner_obj.id,
-                'pricelist_id': pricelist_id,
-                'partner_invoice_id': partner_obj.id,
-                'partner_shipping_id': order.get('partner_shipping_id',
-                                                 partner_obj.id),
-                'chanel': 'telesale',
-                # 'order_policy': 'picking',
-                'date_order': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'requested_date': order['requested_date'] + " 19:00:00" or
-                False,
-                'note': order['note'],
-                'observations': order['observations'],
-                'warehouse_id': warehouse_id,
-                'client_order_ref': order.get('client_order_ref', False)
-            }
+            vals = self.get_head_order_vals(order)
+
             if order['erp_id'] and order['erp_state'] == 'draft':
                 order_obj = t_order.browse(order['erp_id'])
                 order_obj.write(vals)
@@ -81,13 +92,7 @@ class SaleOrder(models.Model):
                 line_objs.unlink()
             self._create_lines_from_ui(order_obj, order_lines)
             if order['action_button'] == 'confirm':
-                order_obj.action_button_confirm()
-            # elif order['action_button'] == 'confirm_background':
-            #     # wf_service = netsvc.LocalService('workflow')
-            #     # wf_service.trg_validate(uid, 'sale.order', order_id,
-            #     #                         'order_confirm', cr)
-            #     self.action_button_confirm_thread(cr, uid, [order_id],
-            #                                       context=context)
+                order_obj.action_confirm()
             if 'set_promotion' in order and order['set_promotion']:
                 order_obj.apply_commercial_rules()
         return order_ids
@@ -105,7 +110,7 @@ class SaleOrder(models.Model):
         product_uom_qty = line.get('qty', 0.0)
         vals = {
             'order_id': order_obj.id,
-            'name': product_obj.name,
+            'name': product_obj.display_name,
             'product_id': product_obj.id,
             'price_unit': line.get('price_unit', 0.0),
             'product_uom': product_uom_id,
@@ -116,11 +121,8 @@ class SaleOrder(models.Model):
         return vals
 
     @api.model
-    def confirm_order_background(self, order_id):
-        # TODO DEPENDENCIA DEL MODULO PARA PONER EL HILO
-        # self.action_button_confirm_thread(cr, uid, [order_id],
-        #                                   context=context)
-        self.browse(order_id).action_confirm()
+    def confirm_order_from_ui(self, order_id):
+        self.browse(order_id).action_button_confirm()
 
     @api.model
     def cancel_order_from_ui(self, order_id):
@@ -137,9 +139,14 @@ class SaleOrder(models.Model):
                              'pricelist_id':
                              partner.property_product_pricelist.id})
         order.onchange_partner_id()
+        order.onchange_partner_shipping_id()
         res.update({
             'pricelist_id': order.pricelist_id.id,
             'partner_shipping_id': order.partner_shipping_id.id,
+            'fiscal_position_id': order.fiscal_position_id.id,
+            'payment_term_id': order.payment_term_id.id,
+            'payment_mode_id': order.payment_mode_id.id,
+            'early_payment_discount': order.early_payment_discount
 
         })
         return res
@@ -147,6 +154,10 @@ class SaleOrder(models.Model):
 
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
+
+    # Because of performance options:
+    standard_price = fields.Float('Intercompany Price',
+                                  related='product_id.standard_price')
 
     @api.model
     def ts_product_id_change(self, product_id, partner_id, pricelist_id):
@@ -165,8 +176,30 @@ class SaleOrderLine(models.Model):
             'price_unit': line.price_unit,
             'product_uom': line.product_uom.id,
             'product_uom_qty': line.product_uom_qty,
-            'tax_id': [x.id for x in line.tax_id]
+            'tax_id': [x.id for x in line.tax_id],
+            'standard_price': line.product_id.standard_price
 
+        })
+        return res
+
+    @api.model
+    def ts_product_uom_change(self, product_id, partner_id, pricelist_id, qty):
+        res = {}
+        order_t = self.env['sale.order']
+        partner = self.env['res.partner'].browse(partner_id)
+        if not pricelist_id:
+            pricelist_id = partner.property_product_pricelist.id
+        order = order_t.new({'partner_id': partner_id,
+                             'date_order': time.strftime("%Y-%m-%d"),
+                             'pricelist_id': pricelist_id})
+        prod = self.env['product.product'].browse(product_id)
+        line = self.new({'order_id': order.id,
+                         'product_id': product_id,
+                         'product_uom': prod.uom_id.id,
+                         'product_uom_qty': qty})
+        line.product_uom_change()
+        res.update({
+            'price_unit': line.price_unit,
         })
         return res
 

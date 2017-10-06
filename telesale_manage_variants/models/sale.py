@@ -16,7 +16,7 @@ class SaleOrder(models.Model):
         product_uom_qty = line.get('qty', 0.0)
         vals = {
             'order_id': order_obj.id,
-            'name': product_obj.name,
+            'name': product_obj.display_name,
             'product_template': product_obj.product_tmpl_id.id,
             'product_id': product_obj.id,
             'price_unit': line.get('price_unit', 0.0),
@@ -54,6 +54,9 @@ class SaleOrder(models.Model):
 
         # Create template_single lines and get structure to create grouping
         # lines and child.
+
+        # Delete template lines first, then crteate again
+        order_obj.template_lines.unlink()
         for line in order_lines:
             mode = line.pop('mode')
             line.pop('cid')
