@@ -265,7 +265,7 @@ class l10n_es_intrastat(models.Model):
                           "\nPlease review the Intrastat settings for Product '[%s] %s'.") %(inv_line.product_id.default_code, inv_line.product_id.name))
                 intrastat_code = intrastat.intrastat_code
 
-                stock_moves = self._find_stock_links(cr, uid, inv_line, context)
+                # stock_moves = self._find_stock_links(cr, uid, inv_line, context)
 
                 line_value = inv_line.price_subtotal
                 
