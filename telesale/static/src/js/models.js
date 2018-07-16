@@ -29,10 +29,12 @@ var TsModel = Backbone.Model.extend({
         this.session = session;  // openerp session
         this.ready = $.Deferred(); // used to notify the GUI that the PosModel has loaded all resources
         this.ready2 = $.Deferred(); // used to notify the GUI that thepromotion has writed in the server
+        this.ready3 = $.Deferred(); // used to notify the GUI that tsavecurrentorder is finished
         // this.flush_mutex = new $.Mutex();  // used to make sure the orders are sent to the server once at time
         this.db = new DB.TS_LS();                       // a database used to store the products and categories
         // this.db.clear('products','partners');
         this.ts_widget = attributes.ts_widget;
+        this.last_sale_id = false; // last id writed
         this.set({
             'currency':              {symbol: $, position: 'after'},
             'shop':                  null,
@@ -88,7 +90,7 @@ var TsModel = Backbone.Model.extend({
         return new Model(model).query(fields).filter(domain).order_by(orderby).context(ctx).all()
     },
     _get_product_fields: function(){
-        return  ['display_name', 'default_code', 'uom_id']
+        return  ['display_name', 'default_code', 'uom_id', 'barcode']
     },
     _get_partner_fields: function(){
         return  ['parent_id', 'country_id', 'display_name', 'name', 'ref', 'phone', 'user_id','comment','email', 'zip', 'street', 'state_id', 'country_id', 'vat', 'write_date', 'commercial_partner_name', 'city', 'comercial', 'company_type']
@@ -288,13 +290,15 @@ var TsModel = Backbone.Model.extend({
                 //don't show error popup if it fails
                 console.error('Failed to send order:',order);
                 self._flush(index+1);
-                self.ready2.reject()
+                self.ready2.reject();
+                self.last_sale_id = false
             })
-            .done(function(){
+            .done(function(orders){
                 //remove from db if success
                 self.db.remove_order(order.id);
                 self._flush(index);
                 self.get('selectedOrder').destroy(); // remove order from UI
+                self.last_sale_id = orders[0]
                 self.ready2.resolve()
             });
     },
@@ -313,10 +317,12 @@ var TsModel = Backbone.Model.extend({
             .fail(function(unused, event){
                 alert('Ocurrió un fallo en al mandar el pedido al servidor');
                 self.ready2.reject()
+                self.last_sale_id = false
             })
-            .done(function(){
+            .done(function(orders){
                 //remove from db if success
                 self.get('selectedOrder').destroy(); // remove order from UI
+                self.last_sale_id = orders[0]
                 self.ready2.resolve()
             });
     },
@@ -950,6 +956,30 @@ var Order = Backbone.Model.extend({
         var cus_name = self.ts_model.getComplexName(partner);
         this.set('partner', cus_name);
     },
+    get_parent_partner: function(){
+        var parent_name = ''
+        var current_partner_id = this.get_client()
+        var current_partner = this.ts_model.db.get_partner_by_id(current_partner_id)
+        var top_parent = false;
+        if (!current_partner)
+            return parent_name
+
+        if (!current_partner.parent_id) 
+            return parent_name
+
+        var parent_id = current_partner.parent_id[0]
+        var parent = this.ts_model.db.get_partner_by_id(parent_id)
+        while (parent){
+            top_parent = parent
+            parent_id = parent.parent_id || false
+            parent = this.ts_model.db.get_partner_by_id(parent_id)
+        }
+        if (top_parent)
+            parent_name = top_parent.name
+        
+        
+        return parent_name
+    }
 
 });
 

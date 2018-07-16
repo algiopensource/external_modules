@@ -453,25 +453,26 @@ var CustomerListWidget = TsBaseWidget.extend({
         }
 
         if (!fields.name) {
-            // this.gui.show_popup('error',_t('A Customer Name Is Required'));
             alert(_t('A Customer Name Is Required'));
             return;
         }
+        if (!fields.city) {
+            alert(_t('City Is Required'));
+            return;
+        }
+        if (!fields.state_id) {
+            if (country_id == 69){
+                alert(_t('State Is Required'));
+                return;
+            }
+        }
         
-        // if (this.uploaded_picture) {
-        //     fields.image = this.uploaded_picture;
-        // }
-
         fields.id           = partner.id || false;
         // fields.country_id   = fields.country_id || false;
         new Model('res.partner').call('update_partner_from_ui',[fields]).then(function(partner_id){
             self.saved_client_details(partner_id);
         },function(err,event){
             event.preventDefault();
-            // self.gui.show_popup('error',{
-            //     'title': _t('Error: Could not Save Changes'),
-            //     'body': _t('Your Internet connection is probably down.'),
-            // });
             alert(_t('Error saving partner to the server'))
         });
     },

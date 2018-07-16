@@ -48,7 +48,8 @@ var OrderButtonWidget = TsBaseWidget.extend({
         $('.select-order').removeClass('selected-order');
         $(identify).addClass('selected-order');
         // $('.tab1').focus();
-        var value = $('#partner').val()
+        // var value = $('#partner').val()
+        var value = this.ts_model.get('selectedOrder').get('partner')
         var partner_id = this.ts_model.db.partner_name_id[value];
         if(partner_id){
             $('#vua-button').click();
@@ -380,7 +381,7 @@ var OrderlineWidget = TsBaseWidget.extend({
             self.model.set('taxes_ids', result.tax_id || []); //TODO poner impuestos de producto o vacio
             self.model.set('unit', self.model.ts_model.db.unit_by_id[result.product_uom].name);
             self.model.set('qty', add_qty);
-            self.model.set('discount', 0.0);
+            self.model.set('discount', result.discount || 0.0);
             self.model.set('standard_price', result.standard_price || 0.0);
             self.model.set('pvp', self.ts_model.my_round( result.price_unit));
            
@@ -595,23 +596,34 @@ var OrderWidget = TsBaseWidget.extend({
             }
         },
         button_promo: function(){
-           var self = this;
-           var current_order = this.ts_model.get('selectedOrder')
-           current_order.set('set_promotion', true)
-           this.ts_widget.new_order_screen.totals_order_widget.saveCurrentOrder()
+            var self = this;
+            var currentOrder = this.ts_model.get('selectedOrder')
+            currentOrder.set('set_promotion', true)
+            var currentOrder = this.ts_model.get('selectedOrder')
+            if ( (currentOrder.get('erp_state')) && (currentOrder.get('erp_state') != 'draft') ){
+                alert(_t('You cant apply customer rules to an order which state is diferent than draft.'));
+                return;
+            }
+           this.ts_widget.new_order_screen.totals_order_widget.saveCurrentOrder(true)
            $.when( self.ts_model.ready2 )
            .done(function(){
-           var loaded = self.ts_model.fetch('sale.order',
-                                           ['id', 'name'],
-                                           [
-                                               ['chanel', '=', 'telesale']
-                                           ])
+                if (self.ts_model.last_sale_id){
+                    var domain = [['id', '=', self.ts_model.last_sale_id]]
+                }
+                else{
+                    var domain = [['chanel', '=', 'telesale'], ['user_id', '=', self.ts_model.get('user').id]]
+                }
+                var loaded = self.ts_model.fetch('sale.order', ['id', 'name'], domain)
                .then(function(orders){
                    if (orders[0]) {
                    var my_id = orders[0].id
                    $.when( self.ts_widget.new_order_screen.order_widget.load_order_from_server(my_id) )
                    .done(function(){
-                   });
+                        self.ts_model.last_sale_id = false
+                   })
+                   .fail(function(){
+                        self.ts_model.last_sale_id = false
+                    });
 
                  }
                });
@@ -1001,25 +1013,39 @@ var TotalsOrderWidget = TsBaseWidget.extend({
             this.renderElement();
         },
         confirmCurrentOrder: function() {
-          var self = this;
+            var self = this;
             var currentOrder = this.order_model;
-            self.saveCurrentOrder()
+            currentOrder.set('action_button', 'save')
+            if ( (currentOrder.get('erp_state')) && (currentOrder.get('erp_state') != 'draft') ){
+                alert(_t('You cant confirm an order which state is diferent than draft.'));
+                return;
+            }
+            self.saveCurrentOrder(true)
             $.when( self.ts_model.ready2 )
             .done(function(){
-                var loaded = self.ts_model.fetch('sale.order',
-                                                ['id', 'name'],
-                                                [
-                                                    ['chanel', '=', 'telesale']
-                                                ])
+                if (self.ts_model.last_sale_id){
+                    var domain = [['id', '=', self.ts_model.last_sale_id]]
+                }
+                else{
+                    var domain = [['chanel', '=', 'telesale'], ['user_id', '=', self.ts_model.get('user').id]]
+                }
+                var loaded = self.ts_model.fetch('sale.order', ['id', 'name'], domain)
                     .then(function(orders){
                         if (orders[0]) {
-                          // var my_id = orders[0].id
                           (new Model('sale.order')).call('confirm_order_from_ui',[orders[0].id])
                               .fail(function(unused, event){
                                   //don't show error popup if it fails
-                                  console.error('Failed confirm order: ',orders[0].name);
+                                   self.ts_model.last_sale_id = false
                               })
                               .done(function(){
+                                    var my_id = orders[0].id
+                                    $.when( self.ts_widget.new_order_screen.order_widget.load_order_from_server(my_id) )
+                                    .done(function(){
+                                        self.ts_model.last_sale_id = false
+                                    })
+                                    .fail(function(){
+                                        self.ts_model.last_sale_id = false
+                                    });
                               });
 
                         }
@@ -1036,30 +1062,6 @@ var TotalsOrderWidget = TsBaseWidget.extend({
                 this.ts_model.cancel_order(currentOrder.get('erp_id'));
             }
         },
-        button_promo: function(){
-           var self = this;
-           var current_order = this.ts_model.get('selectedOrder')
-           current_order.set('set_promotion', true)
-           this.ts_widget.new_order_screen.totals_order_widget.saveCurrentOrder()
-           $.when( self.ts_model.ready2 )
-           .done(function(){
-           var loaded = self.ts_model.fetch('sale.order',
-                                           ['id', 'name'],
-                                           [
-                                               ['chanel', '=', 'telesale']
-                                           ])
-               .then(function(orders){
-                   if (orders[0]) {
-                   var my_id = orders[0].id
-                   $.when( self.ts_widget.new_order_screen.order_widget.load_order_from_server(my_id) )
-                   .done(function(){
-                   });
-
-                 }
-               });
-            });
-            
-        },
         doPrint: function(erp_id){
             this.do_action({
                 context: {'active_ids': [erp_id]},
@@ -1073,48 +1075,59 @@ var TotalsOrderWidget = TsBaseWidget.extend({
         },
         printCurrentOrder: function() {
             var self = this;
+            self.ts_model.ready3 = $.Deferred();
             self.print_id = false
             var current_order = this.ts_model.get('selectedOrder')
-            if (current_order.get('erp_id')){
-                if (current_order.get('state') != 'draft'){
-                    self.doPrint(current_order.get('erp_id'));
-                    return;
-                }
-                else{
-                    self.print_id = current_order.get('erp_id')
-                }
+            if (current_order.get('erp_id') && current_order.get('erp_state') != 'draft'){
+                self.doPrint(current_order.get('erp_id'));
             }
-
-            this.ts_widget.new_order_screen.totals_order_widget.saveCurrentOrder()
-            $.when( self.ts_model.ready2 )
-            .done(function(){
-            var domain = [['chanel', '=', 'telesale']]
-            if (self.print_id){
-                domain = [['id', '=', self.print_id]]
+            else{
+                this.ts_widget.new_order_screen.totals_order_widget.saveCurrentOrder()
+                $.when( self.ts_model.ready3 )
+                .done(function(){
+                    var currentOrder = self.ts_model.get('selectedOrder')
+                    self.doPrint(currentOrder.get('erp_id'));
+                });
             }
-            var loaded = self.ts_model.fetch('sale.order', ['id', 'name'], domain)
-               .then(function(orders){
-                   if (orders[0]) {
-                   var my_id = orders[0].id
-                   $.when( self.ts_widget.new_order_screen.order_widget.load_order_from_server(my_id) )
-                   .done(function(){
-                        var currentOrder = self.ts_model.get('selectedOrder')
-                        self.doPrint(currentOrder.get('erp_id'));
-                   });
-
-                 }
-               });
-            });
         },
-        saveCurrentOrder: function() {
+        saveCurrentOrder: function(avoid_load) {
+            var self = this;
             var currentOrder = this.order_model;
             currentOrder.set('action_button', 'save')
             if ( (currentOrder.get('erp_state')) && (currentOrder.get('erp_state') != 'draft') ){
                 alert(_t('You cant save as draft an order which state is diferent than draft.'));
+                return;
             }
             else if ( currentOrder.check() ){
                 this.ts_model._flush2(currentOrder.exportAsJSON());
             }
+            if (!avoid_load){
+                $.when( self.ts_model.ready2 )
+                .done(function(){
+                    if (self.ts_model.last_sale_id){
+                    var domain = [['id', '=', self.ts_model.last_sale_id]]
+                    }
+                    else{
+                        var domain = [['chanel', '=', 'telesale'], ['user_id', '=', self.ts_model.get('user').id]]
+                    }
+                    var loaded = self.ts_model.fetch('sale.order', ['id', 'name'], domain)
+                       .then(function(orders){
+                           if (orders[0]) {
+                           var my_id = orders[0].id
+                           $.when( self.ts_widget.new_order_screen.order_widget.load_order_from_server(my_id) )
+                           .done(function(){
+                                self.ts_model.last_sale_id = false
+                                self.ts_model.ready3.resolve()
+                           })
+                           .fail(function(){
+                                self.ts_model.last_sale_id = false
+                                self.ts_model.ready3.reject()
+                           });
+
+                         }
+                       });
+                });
+            }   
         },
 
 });

@@ -112,7 +112,7 @@ class AccountInvoice(models.Model):
                             and str(
                                 prod_early_payment.property_account_income_id.id) not in group_account_line[early_payment_line]:
                         group_account_line[early_payment_line][str(
-                            prod_early_payment.property_account_inoutput.id
+                            prod_early_payment.property_account_income_id.id
                         )] = [invoice_line.id]
                     elif prod_early_payment.property_account_income_id and str(prod_early_payment.property_account_income_id.id) in group_account_line[early_payment_line] or prod_early_payment.categ_id.property_account_sale_early_payment_disc.id and str(prod_early_payment.categ_id.property_account_sale_early_payment_disc.id) in group_account_line[early_payment_line]:
                         if prod_early_payment.property_account_income_id:
@@ -141,13 +141,17 @@ class AccountInvoice(models.Model):
                         'name': _("Early payment discount") + " " + str(self.early_payment_discount) + "%",
                         'invoice_id': self.id,
                         'product_id': prod_early_payment.id,
-                        'account_id': prod_early_payment.categ_id and prod_early_payment.categ_id.property_account_sale_early_payment_disc.id or prod_early_payment.property_stock_account_output.id,
+                        'account_id':
+                            prod_early_payment.property_account_income_id.id
+                            or prod_early_payment.categ_id and
+                            prod_early_payment.categ_id.property_account_sale_early_payment_disc.id ,
                         'price_unit': self.currency_id.round(0.0 - (self.compute_early_payment_discount(inv_lines_out_vat, self.early_payment_discount))),
                         'quantity': 1,
                         'account_analytic_id': analytic_id
                         })
 
         #recompute taxes
+        self._compute_amount()
         self.compute_taxes()
 
         return new_lines
