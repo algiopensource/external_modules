@@ -13,7 +13,7 @@ class StockTransferDetails(models.TransientModel):
     def do_detailed_transfer(self):
         picking = self.picking_id
         location_obj = self.env['stock.location']
-        stock_loc_id = picking.picking_type_id.warehouse_id.lot_stock_id.id
+        stock_loc_id = [x.lot_stock_id.id for x in self.env['stock.warehouse'].search([])]
         totals = {}
         for line in self.item_ids:
             if line.product_id.type == 'product':
@@ -48,8 +48,15 @@ class StockTransferDetails(models.TransientModel):
                         total_qty, totals[product.id][lot][location.id],
                         precision_rounding=product.uom_id.rounding)
                     if difference < 0:
+                        error_message = _(
+                            'Not found enought stock in %s for product %s') % \
+                                (location.name, product.name)
+                        if lot:
+                            error_message += _(' with lot %s') % \
+                                self.env['stock.production.lot'].browse(
+                                lot).name
                         raise exceptions.Warning(
                             _('Quantity error'),
-                            _('Not found enought stock in %s for product %s') %
-                            (location.name, product.name))
+                            error_message
+                            )
         return super(StockTransferDetails, self).do_detailed_transfer()
